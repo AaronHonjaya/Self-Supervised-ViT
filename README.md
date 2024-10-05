@@ -26,10 +26,17 @@ The transformer architecture is the standard transformer architecture (image sni
 
 
 Currently, I will be training on Tiny-ImageNet as I don't have the computational resources to train on ImageNet. 
-Download Link: http://cs231n.stanford.edu/tiny-imagenet-200.zip
+
+
+
+
 
 Citations: 
+
 He, K., Chen, X., Xie, S., Li, Y., Dollár, P., & Girshick, R. (2021). Masked autoencoders are scalable vision learners. arXiv. https://arxiv.org/abs/2111.06377
 
 https://cs231n.stanford.edu/2021/schedule.html (used variety of their lecture slides for reference)
+
+http://cs231n.stanford.edu/tiny-imagenet-200.zip
+
 
