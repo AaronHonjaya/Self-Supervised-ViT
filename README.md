@@ -25,7 +25,7 @@ The transformer architecture is the standard transformer architecture (image sni
 
 
 
-Currently, I will be training on Tiny-ImageNet (cited at bottom) as I don't have the computational resources to train on ImageNet. 
+Currently, I will be training on Tiny-ImageNet (cited at bottom). Note that because the test images have no annotations, the val images will be used for testing instead. 
 
 Download: http://cs231n.stanford.edu/tiny-imagenet-200.zip
 
