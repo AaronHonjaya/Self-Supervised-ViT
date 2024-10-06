@@ -1,85 +1,107 @@
 import os
-from torch.utils.data import Dataset, DataLoader
 import torch
-import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
+from torch.nn import functional as F
 import numpy as np
 import random
-import utils
+import abc
+import natsort 
+import torchvision.transforms as transforms
 
 
-class DataSet300W(Dataset):
-    def __init__(self, data_path, apply_augment=True) -> None:
+class BaseDataset(Dataset, abc.ABC):
+    def __init__(self, data_path, patch_size, stride = None, apply_augment=False, generator = None) -> None:
         super().__init__()
 
+        self.datapath = data_path
         self.apply_augment = apply_augment
+        self.generator = generator
+        
+        self.patch_size = patch_size
+        self.stride = patch_size if stride is None else stride
+        
+        self.wnid_to_words = {}
+        with open("./tiny-imagenet-200/classes.txt", 'r+') as file:
+            for line in file:
+                splits = line.split("\t")
+                self.wnid_to_words[splits[0]] = splits[1].strip().split(", ")
 
-        imgs_dir_path = os.path.join(data_path, "imgs")
-        pts_dir_path = os.path.join(data_path, "pts")
 
-        # self.datasetlist={'data':{},'label':{}}
-        self.datasetlist = {"data": [], "label": []}
-
-        imgs_dir, pts_dir = os.listdir(imgs_dir_path), os.listdir(pts_dir_path)
-
-        if len(imgs_dir) != len(pts_dir):
-            raise RuntimeError("imgs dir and pts dir do not have the same number of files")
-
-        self.datanum = len(imgs_dir)
-
-        for img, pt in zip(imgs_dir, pts_dir):
-            if img != pt:
-                raise RuntimeError("point and image do not match")
-            # self.datasetlist['data'][img] = os.path.join(imgs_dir_path, img)
-            # self.datasetlist['label'][pt] = os.path.join(pts_dir_path, pt)
-            self.datasetlist["data"].append(os.path.join(imgs_dir_path, img))
-            self.datasetlist["label"].append(os.path.join(pts_dir_path, pt))
-
-        # img = np.load(self.datasetlist['data'][0])/255
-        # point = np.load(self.datasetlist['label'][0])
-        # img, point = self.augment(img, point)
-        # utils.display_data(img, point)
-
+    @abc.abstractmethod 
+    def _get_image_path(self, index):
+        pass
+    
+    @abc.abstractmethod 
+    def _get_label(self, index):
+        pass
+    
+    
     def __len__(self):
         return self.datanum
-
+        
     def __getitem__(self, index):
-        img_path = self.datasetlist["data"][index]
-        points_path = self.datasetlist["label"][index]
+        img_path = self._get_image_path(index)
 
         img = np.load(img_path).astype(np.float32)
-        points = np.load(points_path).astype(np.float32)
-
-        if self.apply_augment:
-            img, points = self.augment(img, points)
 
         img = torch.from_numpy(np.ascontiguousarray(img))
-        points = torch.from_numpy(np.ascontiguousarray(points))
+        label = self._get_label(index)
 
-        return img, points
+        # if self.apply_augment:
+        img = self.augment(img)
+            
+        img = F.unfold(img, kernel_size=self.patch_size, stride=self.stride)
+                
+        return img.swapaxes(0, 1), label
 
-    def augment(self, img, points):
+    def augment(self, img):
 
         # horizontal flip
         if random.randint(0, 4) == 0:
-            img = img[:, :, ::-1]
-            points[:, 0] = 1 - points[:, 0]
+            img = torch.flip(img, [2])
 
         # vertical flip
         if random.randint(0, 4) == 0:
-            img = img[:, ::-1, :]
-            points[:, 1] = 1 - points[:, 1]
+
+            img = torch.flip(img, [1])
 
         # to grayscale
         if random.randint(0, 4) == 0:
-            coefficients = np.array([0.2989, 0.5870, 0.1140]).reshape(3, 1, 1)
-            img = np.sum(img * coefficients, axis=0)
-            img = np.stack([img, img, img], axis=0)
+            to_grayscale = transforms.Grayscale(3)
+            img = to_grayscale(img)
+            
+        return img
+    
+class TrainDatasetImageNet(BaseDataset):
+    def __init__(self, train_dir, patch_size, stride = None, apply_augment=False, generator = None) -> None:
+        super().__init__(train_dir, patch_size, stride, apply_augment, generator)
 
-        return img, points
+        self.wnids = []
+        for subdir in natsort.natsorted(os.listdir(train_dir)):
+            self.wnids.append(subdir)
+            
+            # make sure exactly 500 images per class. 
+            assert len(os.listdir(os.path.join(train_dir, subdir, "images_npy"))) == 500
+        
+        
+        self.images_per_class = 500
+        self.datanum = 500 * len(subdir)
+        
+
+    def _get_image_path(self, index):
+        img_num = index % self.images_per_class
+        wnid = self.wnids[index//self.images_per_class]
+        path = os.path.join(self.datapath, wnid,"images_npy", f'{wnid}_{img_num}.npy')
+        return path
+
+    def _get_label(self, index):
+        return torch.tensor(index // self.images_per_class, dtype=torch.int32)
 
 
-# test = DataSet300W("./Face Detection/Data/lfpw/testset_npy")
-# loader = DataLoader(test, batch_size=1)
-# for x, y in loader:
+# train = TrainDatasetImageNet("./tiny-imagenet-200/train", 8)
+# loader = DataLoader(train, batch_size=1)
+
+# for i, (x, y) in enumerate(loader):
 #     print(x.shape)
+#     print(y)
 #     exit()
